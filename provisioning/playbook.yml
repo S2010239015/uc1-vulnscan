@@ -1,0 +1,35 @@
+---
+- name: disable qxl
+  hosts:
+    - routers
+    - hosts
+  gather_facts: yes
+  become: yes
+  tasks:
+    - include_role:
+        name: disable-qxl
+      when: ansible_os_family == 'Debian'
+
+- name: set up vulnerable target
+  hosts: target
+  become: yes
+  roles:
+    - name: vulnerable-target
+
+- name: set up scanner host
+  hosts: scanner
+  become: yes
+  roles:
+    - name: user-access
+      user_access_username: user
+      user_access_password: Password123
+      user_access_sudo: True
+    - name: scanner-host
+
+- name: set up command logging
+  hosts: hosts
+  become: yes
+  roles:
+    - role: sandbox-logging
+      slf_destination_port: '{% if hostvars["man"] is defined -%} 514 {%- else -%} 515 {%- endif %}'
+...

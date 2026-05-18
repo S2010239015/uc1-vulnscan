@@ -1,0 +1,39 @@
+name: uc1-vulnscan
+hosts:
+  - name: target
+    base_box:
+      image: ubuntu-noble-x86_64
+      man_user: ubuntu
+    flavor: standard.small
+  - name: scanner
+    base_box:
+      image: ubuntu-noble-x86_64
+      man_user: ubuntu
+    flavor: standard.medium
+routers:
+  - name: router
+    base_box:
+      image: debian-12-x86_64
+      man_user: debian
+    flavor: standard.small
+networks:
+  - name: target-switch
+    cidr: 192.168.20.0/24
+    accessible_by_user: False
+  - name: scanner-switch
+    cidr: 192.168.30.0/24
+net_mappings:
+  - host: target
+    network: target-switch
+    ip: 192.168.20.5
+  - host: scanner
+    network: scanner-switch
+    ip: 192.168.30.5
+router_mappings:
+  - router: router
+    network: target-switch
+    ip: 192.168.20.1
+  - router: router
+    network: scanner-switch
+    ip: 192.168.30.1
+groups: []

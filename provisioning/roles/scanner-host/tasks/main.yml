@@ -1,0 +1,104 @@
+---
+# Scanner Host für Use Case 1
+# Installiert OpenVAS und Nuclei, bereitet Umgebung für Nessus vor
+
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install base tools
+  apt:
+    name:
+      - curl
+      - wget
+      - nmap
+      - net-tools
+      - dnsutils
+      - vim
+      - htop
+      - tmux
+      - unzip
+      - golang-go
+    state: present
+
+- name: Install Greenbone/OpenVAS
+  apt:
+    name:
+      - gvm
+      - gvmd
+      - openvas-scanner
+      - greenbone-security-assistant
+    state: present
+
+- name: Run GVM setup
+  command: gvm-setup
+  args:
+    creates: /var/lib/gvm/CA/cacert.pem
+  async: 3600
+  poll: 60
+
+- name: Download Nuclei
+  get_url:
+    url: https://github.com/projectdiscovery/nuclei/releases/download/v3.3.5/nuclei_3.3.5_linux_amd64.zip
+    dest: /tmp/nuclei.zip
+    mode: '0644'
+
+- name: Extract Nuclei
+  unarchive:
+    src: /tmp/nuclei.zip
+    dest: /usr/local/bin/
+    remote_src: yes
+    creates: /usr/local/bin/nuclei
+
+- name: Make Nuclei executable
+  file:
+    path: /usr/local/bin/nuclei
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: Update Nuclei templates
+  command: nuclei -update-templates
+  become_user: user
+  ignore_errors: yes
+
+- name: Create scanner working directory
+  file:
+    path: /home/user/scans
+    state: directory
+    owner: user
+    group: user
+    mode: '0755'
+
+- name: Create README for the scanner host
+  copy:
+    dest: /home/user/README.md
+    owner: user
+    group: user
+    content: |
+      # UC1 Scanner Host
+      
+      ## Verfügbare Scanner
+      
+      ### OpenVAS / Greenbone (Open Source, klassisch)
+      - Web-Interface: https://localhost:9392
+      - CLI: `gvm-cli`
+      
+      ### Nuclei (Open Source, template-basiert)
+      - `nuclei -u http://192.168.20.5`
+      - `nuclei -target 192.168.20.5 -severity critical,high`
+      
+      ### Nessus Essentials (kommerziell, manuell zu installieren)
+      1. Account auf https://www.tenable.com/products/nessus/nessus-essentials erstellen
+      2. Aktivierungscode abrufen
+      3. Nessus von https://www.tenable.com/downloads/nessus laden
+      4. `sudo dpkg -i Nessus-*.deb`
+      5. `sudo systemctl start nessusd`
+      6. Browser: https://localhost:8834
+      
+      ## Ziel-System
+      Target: 192.168.20.5
+      
+      ## Ergebnisse speichern in
+      /home/user/scans/

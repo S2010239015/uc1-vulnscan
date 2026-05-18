@@ -1,0 +1,222 @@
+---
+# Vulnerable Target für Use Case 1: Vulnerability Scanning
+# Absichtliche Schwachstellen in verschiedenen Schwierigkeitsgraden
+
+# ============================================
+# LEICHT erkennbare Schwachstellen
+# ============================================
+
+- name: Install vulnerable services
+  apt:
+    name:
+      - vsftpd
+      - telnetd
+      - apache2
+      - openssh-server
+      - rsh-server
+      - tftpd-hpa
+      - samba
+      - nfs-kernel-server
+      - php
+      - libapache2-mod-php
+      - mysql-server
+    state: present
+    update_cache: yes
+
+- name: Enable anonymous FTP access
+  lineinfile:
+    path: /etc/vsftpd.conf
+    regexp: '^#?anonymous_enable'
+    line: 'anonymous_enable=YES'
+
+- name: Allow FTP write access
+  lineinfile:
+    path: /etc/vsftpd.conf
+    regexp: '^#?write_enable'
+    line: 'write_enable=YES'
+
+- name: Create weak password users
+  user:
+    name: "{{ item.name }}"
+    password: "{{ item.password | password_hash('sha512') }}"
+    shell: /bin/bash
+    groups: "{{ item.groups | default(omit) }}"
+  loop:
+    - { name: 'admin', password: 'admin' }
+    - { name: 'test', password: 'test123' }
+    - { name: 'backup', password: 'password' }
+    - { name: 'guest', password: 'guest' }
+    - { name: 'oracle', password: 'oracle' }
+
+# ============================================
+# MITTEL: Schwache SSH Konfiguration
+# ============================================
+
+- name: Weak SSH configuration
+  blockinfile:
+    path: /etc/ssh/sshd_config
+    block: |
+      Ciphers aes128-cbc,3des-cbc,arcfour
+      MACs hmac-md5,hmac-sha1,hmac-md5-96
+      KexAlgorithms diffie-hellman-group1-sha1
+      PermitRootLogin yes
+      PasswordAuthentication yes
+      PermitEmptyPasswords yes
+      Protocol 1,2
+
+# ============================================
+# MITTEL: Apache Fehlkonfigurationen
+# ============================================
+
+- name: Insecure Apache configuration
+  copy:
+    dest: /etc/apache2/conf-available/insecure.conf
+    content: |
+      ServerTokens Full
+      ServerSignature On
+      <Directory /var/www/html>
+        Options Indexes FollowSymLinks ExecCGI
+        AllowOverride All
+        Require all granted
+      </Directory>
+      TraceEnable On
+
+- name: Activate insecure Apache config
+  command: a2enconf insecure
+  args:
+    creates: /etc/apache2/conf-enabled/insecure.conf
+
+# ============================================
+# MITTEL: World-writable Dateien & SUID
+# ============================================
+
+- name: Create world-writable sensitive files
+  file:
+    path: "{{ item }}"
+    state: touch
+    mode: '0777'
+  loop:
+    - /etc/shadow.backup
+    - /var/log/secret.log
+    - /root/backup.tar.gz
+
+- name: Set dangerous SUID bits
+  file:
+    path: "{{ item }}"
+    mode: 'u+s'
+  loop:
+    - /bin/cp
+    - /usr/bin/find
+    - /usr/bin/vim.basic
+
+# ============================================
+# MITTEL: Sudo Fehlkonfigurationen
+# ============================================
+
+- name: Insecure sudoers configuration
+  copy:
+    dest: /etc/sudoers.d/insecure
+    content: |
+      test ALL=(ALL) NOPASSWD: /bin/bash
+      admin ALL=(ALL) NOPASSWD: ALL
+      backup ALL=(ALL) NOPASSWD: /usr/bin/vim, /usr/bin/find
+    mode: '0440'
+    validate: 'visudo -cf %s'
+
+# ============================================
+# SCHWER: Verwundbare Webanwendung
+# ============================================
+
+- name: Create vulnerable PHP application
+  copy:
+    dest: /var/www/html/admin.php
+    content: |
+      <?php
+      // SQL Injection vulnerable
+      $user = $_GET['user'];
+      $query = "SELECT * FROM users WHERE name='$user'";
+      // Command Injection vulnerable
+      $cmd = $_GET['cmd'];
+      if ($cmd) {
+        echo shell_exec($cmd);
+      }
+      // Path Traversal vulnerable
+      $file = $_GET['file'];
+      if ($file) {
+        include($file);
+      }
+      ?>
+
+- name: Expose phpinfo
+  copy:
+    dest: /var/www/html/info.php
+    content: |
+      <?php phpinfo(); ?>
+
+# ============================================
+# SCHWER: Unsichere Samba Shares
+# ============================================
+
+- name: Insecure Samba configuration
+  blockinfile:
+    path: /etc/samba/smb.conf
+    block: |
+      [public]
+        path = /tmp
+        browseable = yes
+        writable = yes
+        guest ok = yes
+        read only = no
+        create mask = 0777
+        directory mask = 0777
+      [admin]
+        path = /etc
+        browseable = yes
+        writable = yes
+        guest ok = yes
+
+# ============================================
+# SCHWER: Unsichere NFS Exports
+# ============================================
+
+- name: Insecure NFS exports
+  copy:
+    dest: /etc/exports
+    content: |
+      /home *(rw,sync,no_root_squash,no_subtree_check)
+      /tmp *(rw,sync,no_root_squash,insecure)
+      /etc *(ro,sync,no_root_squash)
+
+# ============================================
+# SCHWER: MySQL Schwachstellen
+# ============================================
+
+- name: MySQL weak root configuration
+  shell: |
+    mysql -e "UPDATE mysql.user SET authentication_string=PASSWORD('root') WHERE User='root';"
+    mysql -e "GRANT ALL PRIVILEGES ON *.* TO 'admin'@'%' IDENTIFIED BY 'admin' WITH GRANT OPTION;"
+    mysql -e "FLUSH PRIVILEGES;"
+  ignore_errors: yes
+
+# ============================================
+# Services aktivieren
+# ============================================
+
+- name: Start all vulnerable services
+  service:
+    name: "{{ item }}"
+    state: started
+    enabled: yes
+  loop:
+    - vsftpd
+    - apache2
+    - smbd
+    - nmbd
+    - nfs-kernel-server
+    - mysql
+  ignore_errors: yes
+
+- name: Restart SSH
+  service:
+    name: ssh
+    state: restarted
