@@ -1,6 +1,8 @@
 ---
 # Scanner Host für Use Case 1
-# Installiert OpenVAS und Nuclei, bereitet Umgebung für Nessus vor
+# OpenVAS via Greenbone Community Containers (apt-Pakete gibt es unter Noble nicht mehr).
+# Image-/Feed-Download läuft non-blocking im Hintergrund, damit die Allocation
+# nicht in einen Timeout läuft. Docker restart_policy hält den Stack über Reboots.
 
 - name: Update apt cache
   apt:
@@ -19,25 +21,73 @@
       - htop
       - tmux
       - unzip
-      - golang-go
+      - ca-certificates
+      - gnupg
     state: present
 
-- name: Install Greenbone/OpenVAS
+# --- Docker Engine + Compose-Plugin (offizielles Docker-Repo) ---
+- name: Create Docker keyring directory
+  file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+
+- name: Add Docker GPG key
+  get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: '0644'
+
+- name: Add Docker apt repository
+  apt_repository:
+    repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable"
+    filename: docker
+
+- name: Install Docker
   apt:
     name:
-      - gvm
-      - gvmd
-      - openvas-scanner
-      - greenbone-security-assistant
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-compose-plugin
     state: present
+    update_cache: yes
 
-- name: Run GVM setup
-  command: gvm-setup
+- name: Enable and start Docker
+  systemd:
+    name: docker
+    enabled: yes
+    state: started
+
+- name: Add user to docker group
+  user:
+    name: user
+    groups: docker
+    append: yes
+
+# --- Greenbone Community Edition (OpenVAS) ---
+- name: Create Greenbone directory
+  file:
+    path: /opt/greenbone
+    state: directory
+    mode: '0755'
+
+- name: Download Greenbone compose file
+  get_url:
+    url: https://greenbone.github.io/docs/latest/_static/compose.yaml
+    dest: /opt/greenbone/compose.yaml
+    mode: '0644'
+
+- name: Pull and start Greenbone (non-blocking background job)
+  shell: |
+    docker compose -f /opt/greenbone/compose.yaml pull
+    docker compose -f /opt/greenbone/compose.yaml up -d
   args:
-    creates: /var/lib/gvm/CA/cacert.pem
+    chdir: /opt/greenbone
   async: 3600
-  poll: 60
+  poll: 0
 
+# --- Nuclei (template-basierter Scanner) ---
 - name: Download Nuclei
   get_url:
     url: https://github.com/projectdiscovery/nuclei/releases/download/v3.3.5/nuclei_3.3.5_linux_amd64.zip
@@ -58,11 +108,7 @@
     owner: root
     group: root
 
-- name: Update Nuclei templates
-  command: nuclei -update-templates
-  become_user: user
-  ignore_errors: yes
-
+# --- Arbeitsverzeichnis + README ---
 - name: Create scanner working directory
   file:
     path: /home/user/scans
@@ -78,27 +124,36 @@
     group: user
     content: |
       # UC1 Scanner Host
-      
-      ## Verfügbare Scanner
-      
-      ### OpenVAS / Greenbone (Open Source, klassisch)
-      - Web-Interface: https://localhost:9392
-      - CLI: `gvm-cli`
-      
-      ### Nuclei (Open Source, template-basiert)
-      - `nuclei -u http://192.168.20.5`
-      - `nuclei -target 192.168.20.5 -severity critical,high`
-      
-      ### Nessus Essentials (kommerziell, manuell zu installieren)
-      1. Account auf https://www.tenable.com/products/nessus/nessus-essentials erstellen
-      2. Aktivierungscode abrufen
-      3. Nessus von https://www.tenable.com/downloads/nessus laden
-      4. `sudo dpkg -i Nessus-*.deb`
-      5. `sudo systemctl start nessusd`
-      6. Browser: https://localhost:8834
-      
+
+      ## OpenVAS / Greenbone (Container)
+      OpenVAS laeuft als Greenbone-Community-Container-Stack.
+      Nach dem ersten Hochfahren laedt der Scanner die Feeds im Hintergrund
+      (CVE/SCAP/VTs) - das dauert beim ersten Mal ca. 15-30 Minuten.
+
+      Status pruefen:
+        docker compose -f /opt/greenbone/compose.yaml ps
+        docker compose -f /opt/greenbone/compose.yaml logs -f gvmd
+
+      Admin-Passwort setzen (Standard admin/admin):
+        docker compose -f /opt/greenbone/compose.yaml exec -u gvmd gvmd \
+          gvmd --user=admin --new-password='DEIN_PASSWORT'
+
+      Web-Interface (bindet nur auf 127.0.0.1):
+        SSH-Tunnel vom Laptop, dann https://localhost:9392
+          ssh -L 9392:127.0.0.1:9392 user@<scanner>
+
+      ## Nuclei
+        nuclei -u http://192.168.20.5
+        nuclei -target 192.168.20.5 -severity critical,high
+
+      ## Nessus Essentials (manuell)
+      1. Account: https://www.tenable.com/products/nessus/nessus-essentials
+      2. .deb: https://www.tenable.com/downloads/nessus
+      3. sudo dpkg -i Nessus-*.deb && sudo systemctl start nessusd
+      4. Browser: https://localhost:8834
+
       ## Ziel-System
       Target: 192.168.20.5
-      
-      ## Ergebnisse speichern in
+
+      ## Scans speichern in
       /home/user/scans/
