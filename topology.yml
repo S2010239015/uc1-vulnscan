@@ -22,6 +22,7 @@ networks:
     accessible_by_user: False
   - name: scanner-switch
     cidr: 192.168.30.0/24
+    accessible_by_user: False
 net_mappings:
   - host: target
     network: target-switch
