@@ -61,7 +61,7 @@
 
 - name: Add user to docker group
   user:
-    name: user
+    name: ubuntu
     groups: docker
     append: yes
 

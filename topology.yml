@@ -9,7 +9,7 @@ hosts:
     base_box:
       image: ubuntu-noble-x86_64
       man_user: ubuntu
-    flavor: standard.medium
+    flavor: standard.large
 routers:
   - name: router
     base_box:
