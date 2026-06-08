@@ -5,7 +5,7 @@ Use Case 1 für die Masterarbeit: Vergleich von Vulnerability Scannern in einer 
 ## Topologie
 
 - **target** (192.168.20.5) — Ubuntu mit absichtlichen Schwachstellen (CVEs, schwache Konfigs, unsichere Services)
-- **scanner** (192.168.30.5) — Ubuntu mit vorinstallierten Open-Source Scannern (OpenVAS, Nuclei)
+- **scanner** (192.168.20.10) — Ubuntu mit vorinstallierten Open-Source Scannern (OpenVAS, Nuclei)
 - **router** — verbindet beide Netze
 
 ## Zu vergleichende Scanner

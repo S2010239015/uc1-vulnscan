@@ -17,24 +17,18 @@ routers:
       man_user: debian
     flavor: standard.small
 networks:
-  - name: target-switch
+  - name: lab-switch
     cidr: 192.168.20.0/24
-    accessible_by_user: False
-  - name: scanner-switch
-    cidr: 192.168.30.0/24
     accessible_by_user: False
 net_mappings:
   - host: target
-    network: target-switch
+    network: lab-switch
     ip: 192.168.20.5
   - host: scanner
-    network: scanner-switch
-    ip: 192.168.30.5
+    network: lab-switch
+    ip: 192.168.20.10
 router_mappings:
   - router: router
-    network: target-switch
+    network: lab-switch
     ip: 192.168.20.1
-  - router: router
-    network: scanner-switch
-    ip: 192.168.30.1
 groups: []
