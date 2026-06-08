@@ -55,14 +55,19 @@
 - name: Weak SSH configuration
   blockinfile:
     path: /etc/ssh/sshd_config
+    validate: '/usr/sbin/sshd -t -f %s'
     block: |
-      Ciphers aes128-cbc,3des-cbc,arcfour
-      MACs hmac-md5,hmac-sha1,hmac-md5-96
-      KexAlgorithms diffie-hellman-group1-sha1
+      # absichtlich schwach fuer UC1 - gueltig fuer OpenSSH 9.x
       PermitRootLogin yes
       PasswordAuthentication yes
       PermitEmptyPasswords yes
-      Protocol 1,2
+      X11Forwarding yes
+      MaxAuthTries 10
+      Ciphers +aes128-cbc,3des-cbc
+      MACs +hmac-sha1,hmac-md5
+      KexAlgorithms +diffie-hellman-group1-sha1,diffie-hellman-group14-sha1
+      HostKeyAlgorithms +ssh-rsa
+      PubkeyAcceptedAlgorithms +ssh-rsa
 
 # ============================================
 # MITTEL: Apache Fehlkonfigurationen
